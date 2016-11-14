@@ -5,37 +5,49 @@ import threading
 import binascii
 import ssl
 import sys
-import os
 from free_tls_certificates import client as certbotClient
 import re
 from requests import get
 import time
 import optparse
-import atexit
 import os
-import signal
-import glob
 import atexit
 from SimpleHTTPServer import SimpleHTTPRequestHandler
-from BaseHTTPServer import HTTPServer
 from IPy import IP
 import SocketServer
-import select
 import struct
 from daemonize import Daemonize
+opts = None
+remainder = None
+logFileSize = 1000*1000 #log file size in bytes (1MB)
+challenges = {}
+import logging.handlers
+
+LOG_FILENAME = 'jfe_logs.log'
+
+# Set up a specific logger with our desired output level
+jfe_logger = logging.getLogger('JFELogger')
+jfe_logger.setLevel(logging.DEBUG)
+
+# Add the log message handler to the logger
+handler = logging.handlers.RotatingFileHandler(
+              LOG_FILENAME, maxBytes=logFileSize, backupCount=5)
+
+jfe_logger.addHandler(handler)
 
 def flush_mangle_table():
     os.system("""
-iptables -F -t mangle
-ip rule del fwmark 1 lookup 100
-ip route del local 0.0.0.0/0 dev lo table 100
-""")
+    iptables -F -t mangle
+    ip rule del fwmark 1 lookup 100
+    ip route del local 0.0.0.0/0 dev lo table 100
+    """)
 
 atexit.register(flush_mangle_table)
 
 def logger(*msg):
     if opts.verbose: 
         print(msg)
+        jfe_logger.info(msg)
 
 # XXX unused for now
 def getTCPInfo(s):
@@ -43,7 +55,6 @@ def getTCPInfo(s):
         x = struct.unpack(fmt, s.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 92))
         return x
 
-challenges = {}
 
 class RequestHandler(SimpleHTTPRequestHandler):
     def do_HEAD(self):
@@ -270,37 +281,32 @@ class JFEServer(object):
 
 def apply_firewall():
     s = """
-#!/bin/sh
-iptables -F
-iptables -F -t mangle
-iptables -t mangle -N DIVERT
-iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT
-iptables -t mangle -A DIVERT -j MARK --set-mark 1
-iptables -t mangle -A DIVERT -j ACCEPT
-ip rule add fwmark 1 lookup 100
-ip route add local 0.0.0.0/0 dev lo table 100
-# Refusing to intercept SSH until this is 100% solid
-iptables -t mangle -A PREROUTING  -p tcp --dport 23:65535 ! -d 127.0.0.1 -j TPROXY \
- --tproxy-mark 0x1/0x1 --on-port 1
-iptables -L -t mangle
-"""
+        #!/bin/sh
+        iptables -F
+        iptables -F -t mangle
+        iptables -t mangle -N DIVERT
+        iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT
+        iptables -t mangle -A DIVERT -j MARK --set-mark 1
+        iptables -t mangle -A DIVERT -j ACCEPT
+        ip rule add fwmark 1 lookup 100
+        ip route add local 0.0.0.0/0 dev lo table 100
+        # Refusing to intercept SSH until this is 100% solid
+        iptables -t mangle -A PREROUTING  -p tcp --dport 23:65535 ! -d 127.0.0.1 -j TPROXY \
+         --tproxy-mark 0x1/0x1 --on-port 1
+        iptables -L -t mangle
+        """
     os.system(s)
    
-opts = None
-remainder = None
-    
-        
-
 
 if __name__ == "__main__":
     usage ="""
-JFE (Jump to Full Encryption):  Full System Encryption Agent
-Dan Kaminsky, Chief Scientist, whiteops.com
+    JFE (Jump to Full Encryption):  Full System Encryption Agent
+    Dan Kaminsky, Chief Scientist, whiteops.com
 
-NOTE:  This is just a demonstration of a system-wide "bump in the wire"
-TLS implementation providing encryption on demand when requested by a
-client, using the new machine acquirable certicates freely available
-from Certbot/Let's Encrypt/CertBot."""
+    NOTE:  This is just a demonstration of a system-wide "bump in the wire"
+    TLS implementation providing encryption on demand when requested by a
+    client, using the new machine acquirable certicates freely available
+    frpidfileom Certbot/Let's Encrypt/CertBot."""
 
     pidfile = "/dev/null"
     parser = optparse.OptionParser(usage=usage)
