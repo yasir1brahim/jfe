@@ -12,10 +12,10 @@ links = []
 requires = []
 
 try:
-    requirements = pip.req.parse_requirements('./requirements.txt')
-except:
     # new versions of pip requires a session
     requirements = pip.req.parse_requirements('./requirements.txt', session=pip.download.PipSession())
+except:
+    requirements = pip.req.parse_requirements('./requirements.txt')
 
 for item in requirements:
     # we want to handle package names and also repo urls
